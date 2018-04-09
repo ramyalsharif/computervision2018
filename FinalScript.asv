@@ -1,0 +1,15 @@
+files=dir(fullfile('model_castle','*.jpg'));
+%% Load data
+images={};
+for i=1:length(files)
+    images{i}=rgb2gray(imread(files(i).name))
+end
+
+%% Extract SIFT descriptors
+siftDescriptors={}
+
+for i=1:length(images)
+    [frames, desc]=sift(images{i});
+    siftDe
+    
+end
