@@ -1,51 +1,83 @@
-function [bestX,maxInliers] = ransac( matches,frames1,desc1,frames2,desc2,Ntimes,threshold)
-    maxInliers=0;
-    bestX=[];
-    for i=1:Ntimes
-        %get permutation
-        perm = randperm(length(matches));
-        seed = perm(1:3);
+function [inliers1Best,inliers2Best,indexesBest] = RANSAC(currentMatches, points1, points2, iterations, threshold)
 
-        currentMatches=matches(:,seed);
-        A=[];
-        b=[];
-        for j=1:size(currentMatches,2)
-            coords1=frames1(1:2,currentMatches(1,j));
-            coords2=frames2(1:2,currentMatches(2,j));
-            currentA=[coords1(1),coords1(2),0,0,1,0;0,0,coords1(1),coords1(2),0,1];
-            currentB=[coords2(1);coords2(2)];
-            A=[A;currentA];
-            b=[b;currentB];
+    matchingPoints1 = points1(:,currentMatches(1,:));
+    matchingPoints2 = points2(:,currentMatches(2,:));
+
+    [Points1norm, Transform_1] = normalize_RANSAC(matchingPoints1);
+    [Points2norm, Transform_2] = normalize_RANSAC(matchingPoints2);
+    % add row of 1s
+    Points1Hom = [Points1norm; ones(1, length(Points1norm))];
+    Points2Hom = [Points2norm; ones(1, length(Points2norm))];
+
+    %8-point-ransac
+    maxInlers = 0;
+    inliers1Best = [];
+    inliers2Best = [];
+    indexesBest =[];
+
+    for i=1:iterations
+        % Randomize points
+        IndicesRandomized = randsample(length(Points1Hom),8);
+
+        EightPoints1 = Points1Hom(:,IndicesRandomized);
+        EightPoints2 = Points2Hom(:,IndicesRandomized);
+        x1=EightPoints1(1,:);
+        x2=EightPoints2(1,:);
+        y1=EightPoints1(2,:);
+        y2=EightPoints2(2,:);
+
+        % Get A matrix
+        A = [];
+        for j=1:8
+            l = [x1(j)*x2(j) x1(j)*y2(j) x1(j) y1(j)*x2(j) y1(j)*y2(j) y1(j) x2(j) y2(j) 1];
+            A = [A;l];
         end
 
-        x = pinv(A)* b;%didnt include the ' , might be a mistake
-        A=[];
-        b=[];
-        for j=1:size(matches,2)
-            coords1=frames1(1:2,matches(1,j));
-            coords2=frames2(1:2,matches(2,j));
-            currentA=[coords1(1),coords1(2),0,0,1,0;0,0,coords1(1),coords1(2),0,1];
-            currentB=[coords2(1);coords2(2)];
-            A=[A;currentA];
-            b=[b;currentB];
-        end
+        % Ger F matrix and enforce signularity of F
+        [~,~,V] = svd(A);
+        F_coordinates = V(:,8);
+        F = [F_coordinates(1:3)';F_coordinates(4:6)'; F_coordinates(7:9)'].';
+        [UofF,SofF,VofF] = svd(F);
+        SofF(3,3) = 0;
+        F = UofF .* SofF .* VofF.';
+        %denormalize F
+        F_denormalized = Transform_2.'*F*Transform_1;
 
-        bTransformed=A*x;
-        inliers=0;
-        for j=1:length(b)/2
-           c11=b(j*2-1);
-           c12=b(j*2);
-           c21=bTransformed(j*2-1);
-           c22=bTransformed(j*2);
-           dist=sqrt((c11-c21)^2+(c12-c22)^2);
-           if dist<threshold
-                inliers=inliers+1;
-           end
+        currentInliers = 0;
+
+        inliers1 = [];
+        inliers2 = [];
+        indexes=[];
+        
+        for j=1:length(Points1Hom)
+
+            FPoints = F_denormalized * Points1Hom(:,j);
+            FTransformedPoints = F_denormalized.' * Points1Hom(:,j);
+
+            currentResult = (Points2Hom(:,j).'*F_denormalized*Points1Hom(:,j))^2 /(FPoints(1)^2 + FPoints(2)^2 + FTransformedPoints(1)^2 + FTransformedPoints(2)^2);
+
+            if currentResult < threshold 
+                currentInliers = currentInliers + 1;
+                inliers1 = [inliers1,[matchingPoints1(1,j); matchingPoints1(2,j)]];
+                inliers2 = [inliers2,[matchingPoints2(1,j); matchingPoints2(2,j)]];
+                indexes=[indexes,[currentMatches(1,j); currentMatches(2,j)]];
+            end
         end
-        if inliers>maxInliers
-            maxInliers=inliers;
-            bestX=x;
-        end    
+        if currentInliers > maxInlers
+            maxInlers = currentInliers;
+            inliers1Best = inliers1;
+            inliers2Best = inliers2;
+            indexesBest =indexes;
+        end  
     end
+%  maxInlers
+%  figure
+%  plot(inliers1Best(1,:),inliers1Best(2,:),'r.');
+%  hold on
+%  plot(inliers2Best(1,:),inliers2Best(2,:),'b.')
+%  
+%  for i=1:length(inliers1Best)
+%      plot([inliers1Best(1,i);inliers2Best(1,i)],[inliers1Best(2,i);inliers2Best(2,i)],'r');
+%  end
 end
 
