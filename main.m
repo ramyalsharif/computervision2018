@@ -47,7 +47,7 @@ for i=1:length(descr)
     points2 = frames{image2Index}(1:2,:);
     
     currentMatches = matches{i};    
-    [points1_ransac,points2_ransac,indexes] = RANSAC(currentMatches, points1, points2, iterations, threshold);
+    [points1_ransac,points2_ransac,indexes] = ransac(currentMatches, points1, points2, iterations, threshold);
     matches8Point{i} = [points1_ransac;indexes(1,:); points2_ransac;indexes(2,:)];  
 end
 
